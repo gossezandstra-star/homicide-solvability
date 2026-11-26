@@ -22,7 +22,7 @@ cells = [
          "sys.path.insert(0, str(ROOT / 'src'))\n"
          "import pandas as pd\nfrom IPython.display import Image, display\n"
          "from homicide.config import load_config\n"
-         "from homicide import data, train, evaluate, cluster, figures\n"
+         "from homicide import data, train, evaluate, learning_curve, monitor, cluster, figures\n"
          "cfg = load_config(ROOT / 'config.yaml')\nFIG = cfg['paths']['figures_dir']\n"
          "MET = cfg['paths']['metrics_dir']"),
     md("## 1. Data: load, clean, split by year\n"
@@ -34,28 +34,41 @@ cells = [
          "'unsolved share': round(d.y.mean(), 3)} for s, d in "
          "zip(['train', 'validation', 'test'], [train_df, val_df, test_df])}).T"),
     md("## 2. Train and tune the classifiers\n"
-       "Majority baseline vs. logistic regression, decision tree, random forest and "
-       "gradient boosting. Positive class = *unsolved*. Hyper-parameters are chosen on the "
-       "validation years by average precision. (This cell takes 15-30 minutes; set "
-       "`RUN_TRAINING = False` to reuse saved models.)"),
-    code("RUN_TRAINING = False\n"
-         "if RUN_TRAINING or not (cfg['paths']['models_dir'] / 'best_model.joblib').exists():\n"
+       "Majority baseline vs. logistic regression, decision tree, random forest, AdaBoost "
+       "and gradient boosting. Positive class = *unsolved*. Hyper-parameters are chosen on "
+       "the validation years by average precision. The heavy steps below are switched off "
+       "by default and reuse the saved outputs; set `RERUN = True` to recompute everything "
+       "(about 50 minutes on 2 CPU cores)."),
+    code("RERUN = False\n"
+         "if RERUN or not (cfg['paths']['models_dir'] / 'best_model.joblib').exists():\n"
          "    train.run(cfg)\n"
          "val_summary = json.load(open(MET / 'validation_summary.json'))\n"
          "print('selected model:', val_summary['selected_model'])\n"
          "pd.read_csv(MET / 'tuning_results.csv').sort_values('average_precision', "
          "ascending=False).groupby('model').head(1).round(3)"),
-    md("## 3. Evaluate once on the test years"),
-    code("evaluate.run(cfg)\npd.read_csv(MET / 'test_results.csv').round(3)"),
-    md("## 4. Cluster detector (k-modes) and the Gary, Indiana check"),
-    code("check = cluster.run(cfg)\ncheck"),
-    code("pd.read_csv(MET / 'clusters.csv').query('flagged').head(10)"),
-    md("## 5. Figures\nAll figures are created by `figures.py` from the saved metrics."),
-    code("figures.run(cfg)\nfor f in sorted(FIG.glob('fig*.png')):\n    display(Image(filename=str(f)))"),
-    md("## 6. Bias audit and error examples"),
+    md("## 3. Evaluate once on the test years\n"
+       "Test metrics per model, paired bootstrap intervals, calibration and the learning "
+       "curve."),
+    code("if RERUN:\n    evaluate.run(cfg)\n    learning_curve.run(cfg)\n"
+         "pd.read_csv(MET / 'test_results.csv').round(3)"),
+    code("pd.read_csv(MET / 'bootstrap_ci.csv').round(4)"),
+    code("print(json.load(open(MET / 'calibration_summary.json')))\n"
+         "pd.read_csv(MET / 'learning_curve.csv').round(3)"),
+    md("## 4. Bias audit, fairer thresholds and error examples"),
     code("pd.read_csv(MET / 'bias_audit.csv').round(3)"),
+    code("pd.read_csv(MET / 'fairness_thresholds.csv').round(3)"),
     code("pd.read_csv(MET / 'error_examples.csv')"),
-    md("## 7. Demo: score new cases"),
+    md("## 5. Drift monitoring\nTraining years vs test years (KS, chi-square, PSI)."),
+    code("if RERUN:\n    monitor.run(cfg)\n"
+         "pd.read_csv(MET / 'drift_report.csv').round(4)"),
+    md("## 6. Cluster detector (k-modes) and the Gary, Indiana check"),
+    code("if RERUN:\n    cluster.run(cfg)\n"
+         "pd.read_csv(MET / 'elbow.csv').round(3)"),
+    code("json.load(open(MET / 'gary_check.json'))"),
+    code("pd.read_csv(MET / 'clusters.csv').query('flagged')"),
+    md("## 7. Figures\nAll figures are created by `figures.py` from the saved metrics."),
+    code("figures.run(cfg)\nfor f in sorted(FIG.glob('fig*.png')):\n    display(Image(filename=str(f)))"),
+    md("## 8. Demo: score new cases"),
     code("from homicide.predict import SolvabilityModel\n"
          "model = SolvabilityModel(cfg['paths']['models_dir'] / 'best_model.joblib')\n"
          "model.predict(pd.read_csv(ROOT / 'examples' / 'sample_input.csv', "

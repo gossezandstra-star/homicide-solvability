@@ -21,6 +21,8 @@ fig08  Elbow + silhouette of k-modes                 reports/metrics/elbow.csv
 fig09  Gary, Indiana check for every k               reports/metrics/elbow.csv
 fig10  Drift (PSI) per feature                       reports/metrics/drift_report.csv
 fig11  Test performance per year                     reports/metrics/performance_by_year.csv
+fig12  Calibration (reliability) on test             reports/metrics/calibration.csv
+fig13  Learning curve of the selected model          reports/metrics/learning_curve.csv
 =====  ============================================  =========================================
 """
 
@@ -290,9 +292,48 @@ def fig11_performance_by_year(cfg):
     _save(fig, cfg, "fig11_performance_by_year")
 
 
+def fig12_calibration(cfg):
+    """Mean predicted vs observed unsolved share per decile on the test years."""
+    cal = pd.read_csv(cfg["paths"]["metrics_dir"] / "calibration.csv")
+    with open(cfg["paths"]["metrics_dir"] / "calibration_summary.json", encoding="utf-8") as f:
+        brier = json.load(f)
+    fig, ax = plt.subplots(figsize=(4.8, 4.4))
+    ax.plot([0, 1], [0, 1], color=GREY, ls="--", lw=1.5, label="perfect calibration")
+    ax.plot(cal["mean_predicted"], cal["observed"], color=SERIES[0], marker="o",
+            markersize=6, label="selected model (deciles)")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_xlabel("mean predicted P(unsolved)")
+    ax.set_ylabel("observed share unsolved")
+    ax.legend(loc="upper left", fontsize=8)
+    ax.set_title(f"Calibration on the test years\nBrier score {brier['brier_score']:.3f} "
+                 f"(baseline {brier['brier_score_baseline']:.3f})", fontsize=10)
+    _save(fig, cfg, "fig12_calibration")
+
+
+def fig13_learning_curve(cfg):
+    """Average precision on the training sample and on validation vs training-set size."""
+    path = cfg["paths"]["metrics_dir"] / "learning_curve.csv"
+    if not path.exists():
+        return
+    lc = pd.read_csv(path)
+    fig, ax = plt.subplots(figsize=(6, 3.6))
+    ax.plot(lc["train_size"], lc["train_average_precision"], color=SERIES[1], marker="o",
+            markersize=6, label="training sample (in-sample)")
+    ax.plot(lc["train_size"], lc["validation_average_precision"], color=SERIES[0],
+            marker="o", markersize=6, label="validation years 2009-2011")
+    ax.set_xscale("log")
+    ax.set_ylim(0, 1)
+    ax.set_xlabel("training cases (log scale)")
+    ax.set_ylabel("average precision")
+    ax.legend(loc="lower right", fontsize=8)
+    ax.set_title("Learning curve of the selected model")
+    _save(fig, cfg, "fig13_learning_curve")
+
+
 ALL = [fig01_unsolved_by_year, fig02_unsolved_by_weapon, fig03_model_comparison,
        fig04_pr_curves, fig05_confusion, fig06_importance, fig07_bias, fig08_elbow, fig09_gary,
-       fig10_drift, fig11_performance_by_year]
+       fig10_drift, fig11_performance_by_year, fig12_calibration, fig13_learning_curve]
 
 
 def run(cfg):

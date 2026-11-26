@@ -76,9 +76,32 @@ def load_splits(cfg: dict):
     return build_splits(cfg, save=True)
 
 
+def leakage_report(raw: pd.DataFrame, leakage_cols: list[str]) -> pd.DataFrame:
+    """How well each dropped column alone predicts the label.
+
+    For every leakage column: the share of rows where "the field is unknown/0" coincides
+    with "the case is unsolved". Values close to 1 show the field is only filled in after
+    a case is solved, so it must not be used as an input.
+    """
+    unsolved = raw[TARGET] == POSITIVE_LABEL
+    rows = []
+    for col in leakage_cols:
+        if col not in raw:
+            continue
+        unknown = raw[col].astype(str).isin(["Unknown", "0"])
+        rows.append({"column": col,
+                     "agreement_unknown_vs_unsolved": float((unknown == unsolved).mean()),
+                     "unsolved_share_if_unknown": float(unsolved[unknown].mean()),
+                     "unsolved_share_if_known": float(unsolved[~unknown].mean())})
+    return pd.DataFrame(rows)
+
+
 def build_splits(cfg: dict, save: bool = True):
     """Run the full load -> clean -> split step."""
-    df = clean(load_raw(cfg["paths"]["raw_csv"]), cfg["features"]["leakage"])
+    raw = load_raw(cfg["paths"]["raw_csv"])
+    leakage_report(raw, cfg["features"]["leakage"]).to_csv(
+        cfg["paths"]["metrics_dir"] / "leakage_check.csv", index=False)
+    df = clean(raw, cfg["features"]["leakage"])
     splits = time_split(df, cfg["split"]["train_end_year"], cfg["split"]["val_end_year"])
     if save:
         for name, part in zip(("train", "val", "test"), splits):

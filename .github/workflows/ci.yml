@@ -17,7 +17,7 @@ jobs:
           python-version: "3.13"
           cache: pip
       - name: Install dependencies
-        run: pip install -r requirements.txt pylint
+        run: pip install -r requirements.txt pylint && pip install -e .
       - name: Lint (pylint)
         run: pylint src app --fail-under=8
       - name: Unit tests (pytest)

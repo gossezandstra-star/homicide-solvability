@@ -14,12 +14,15 @@ with the Hamming distance is reported as a second check.
 Flagging rule: a cluster is flagged when it has at least ``min_cluster_size`` cases and a
 one-sided binomial test says its unsolved share is above the regional share
 (p < ``alpha``). Because we test every cluster, we also report a stricter
-Bonferroni-corrected flag (p < alpha / k).
+Bonferroni-corrected flag (p < alpha / k), and, for comparison, the simpler rule we tried
+first: a fixed threshold of 50% unsolved.
 
-Validation: the Gary, Indiana case. In 2010 the Murder Accountability Project flagged a
-cluster of unsolved strangulations of women in Lake County, Indiana; in 2014 a man
-confessed to several of those killings. We check where those cases end up, for the
-chosen k and for every k in the elbow search (sensitivity analysis).
+Validation: the Gary, Indiana case. In 2010 Thomas Hargrove, who later founded the
+Murder Accountability Project, flagged a cluster of unsolved strangulations of women in
+Lake County, Indiana, with a simple clustering rule. In 2014 a man arrested in Gary
+confessed to strangling several women; whether he committed the older unsolved cases is
+not proven (Kolker, 2017). We check where those cases end up, for the chosen k and for
+every k in the elbow search (sensitivity analysis).
 
 Outputs (in ``reports/metrics``): ``elbow.csv``, ``clusters.csv``,
 ``cluster_assignments.csv`` and ``gary_check.json``.
@@ -99,6 +102,8 @@ def summarise(df: pd.DataFrame, labels: np.ndarray, features: list[str],
     big = table["n_cases"] >= min_size
     table["flagged"] = big & (table["p_value"] < alpha)
     table["flagged_bonferroni"] = big & (table["p_value"] < alpha / k)
+    # Simpler rule we tried first: a fixed threshold of 50% unsolved (kept for comparison).
+    table["flagged_fixed50"] = big & (table["unsolved_share"] >= 0.5)
     return table.sort_values(["flagged", "p_value"], ascending=[False, True]).reset_index(drop=True)
 
 
@@ -129,6 +134,9 @@ def gary_check(df: pd.DataFrame, labels: np.ndarray, table: pd.DataFrame) -> dic
         "cluster_p_value": float(info["p_value"]),
         "cluster_flagged": bool(info["flagged"]),
         "cluster_flagged_bonferroni": bool(info["flagged_bonferroni"]),
+        "cluster_flagged_fixed50": bool(info["flagged_fixed50"]),
+        "in_any_fixed50_cluster": int(lab.isin(set(table.loc[table["flagged_fixed50"],
+                                                             "cluster"])).sum()),
         "cluster_profile": {f: info[f] for f in ("City", "Victim Sex", "Victim Age Group",
                                                  "Victim Race", "Weapon") if f in info},
     }
@@ -160,6 +168,7 @@ def run(cfg: dict, region: str | None = None, k: int | None = None) -> dict:
             g = gary_check(df, km.labels_, t)
             row.update({"gary_of_them_in_top_cluster": g["of_them_in_that_cluster"],
                         "gary_in_any_flagged_cluster": g["in_any_flagged_cluster"],
+                        "gary_in_any_fixed50_cluster": g["in_any_fixed50_cluster"],
                         "gary_top_cluster_flagged": g["cluster_flagged"]})
         rows.append(row)
         log.info("k=%3d %s", kk, {k_: v for k_, v in row.items() if k_ != "k"})
@@ -177,7 +186,8 @@ def run(cfg: dict, region: str | None = None, k: int | None = None) -> dict:
 
     check = gary_check(df, labels, table) if is_indiana else {"applicable": False}
     check.update({"region": region, "k": k, "n_clusters_flagged": int(table["flagged"].sum()),
-                  "n_clusters_flagged_bonferroni": int(table["flagged_bonferroni"].sum())})
+                  "n_clusters_flagged_bonferroni": int(table["flagged_bonferroni"].sum()),
+                  "n_clusters_flagged_fixed50": int(table["flagged_fixed50"].sum())})
     with open(out_dir / "gary_check.json", "w", encoding="utf-8") as f:
         json.dump(check, f, indent=2, default=str)
     log.info("result: %s", check)

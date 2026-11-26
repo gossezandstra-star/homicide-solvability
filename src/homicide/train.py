@@ -126,7 +126,7 @@ def run(cfg: dict) -> dict:
 
     # 2. Grid search on the validation set
     for name, grid in cfg["models"].items():
-        best = None
+        best_params, best_score = None, -np.inf
         for params in param_grid(grid):
             t0 = time.time()
             pipe = make_pipeline(cfg, make_estimator(name, params, seed)).fit(X_tune, y_tune)
@@ -134,9 +134,9 @@ def run(cfg: dict) -> dict:
             secs = time.time() - t0
             rows.append({"model": name, "params": json.dumps(params), **s, "fit_seconds": secs})
             log.info("%-22s %-70s %s=%.4f (%.0fs)", name, params, metric, s[metric], secs)
-            if best is None or s[metric] > best[1]:
-                best = (params, s[metric])
-        best_per_model[name] = best[0]
+            if s[metric] > best_score:
+                best_params, best_score = params, s[metric]
+        best_per_model[name] = best_params
 
     tuning = pd.DataFrame(rows)
     tuning.to_csv(cfg["paths"]["metrics_dir"] / "tuning_results.csv", index=False)

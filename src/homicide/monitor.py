@@ -7,7 +7,8 @@ monitor three things, using the training years as the reference and the test yea
 
 1. **Data drift** per input feature
    * numeric features: two-sample Kolmogorov-Smirnov test;
-   * categorical features: Pearson chi-square test on the category counts;
+   * categorical features: Pearson chi-square test on the category counts (agency and
+     county: their 100 most frequent values plus "other");
    * all features: Population Stability Index (PSI). Rule of thumb: < 0.1 stable,
      0.1-0.25 moderate shift, > 0.25 significant shift (Yurdakul, 2018).
 2. **Prediction drift**: PSI of the predicted P(unsolved), validation vs test years.
@@ -46,10 +47,19 @@ def psi(expected: np.ndarray, actual: np.ndarray) -> float:
 
 
 def numeric_drift(ref: pd.Series, cur: pd.Series, bins: int) -> dict:
-    """KS test and PSI (quantile bins of the reference) for a numeric feature."""
+    """KS test and PSI for a numeric feature.
+
+    PSI uses quantile bins of the reference. A feature with only a few distinct values
+    (such as the number of additional victims) gets one bin per value instead, because
+    quantile edges would collapse into a single bin and hide any shift.
+    """
     ref, cur = ref.dropna(), cur.dropna()
-    edges = np.unique(np.quantile(ref, np.linspace(0, 1, bins + 1)))
-    edges[0], edges[-1] = -np.inf, np.inf
+    if ref.nunique() <= bins:
+        values = np.sort(ref.unique())
+        edges = np.concatenate([[-np.inf], (values[:-1] + values[1:]) / 2, [np.inf]])
+    else:
+        edges = np.unique(np.quantile(ref, np.linspace(0, 1, bins + 1)))
+        edges[0], edges[-1] = -np.inf, np.inf
     e = np.histogram(ref, edges)[0] / len(ref)
     a = np.histogram(cur, edges)[0] / len(cur)
     ks = ks_2samp(ref, cur)
@@ -57,11 +67,21 @@ def numeric_drift(ref: pd.Series, cur: pd.Series, bins: int) -> dict:
             "psi": psi(e, a)}
 
 
-def categorical_drift(ref: pd.Series, cur: pd.Series) -> dict:
-    """Chi-square test and PSI for a categorical feature."""
-    cats = sorted(set(ref.astype(str)) | set(cur.astype(str)))
-    r = ref.astype(str).value_counts().reindex(cats, fill_value=0)
-    c = cur.astype(str).value_counts().reindex(cats, fill_value=0)
+def categorical_drift(ref: pd.Series, cur: pd.Series, top: int | None = None) -> dict:
+    """Chi-square test and PSI for a categorical feature.
+
+    For high-cardinality columns (agency, county) only the ``top`` most frequent reference
+    categories are kept and the rest is pooled as "other", so that tiny categories do not
+    dominate the statistics.
+    """
+    ref, cur = ref.astype(str), cur.astype(str)
+    if top is not None:
+        keep_cats = set(ref.value_counts().index[:top])
+        ref = ref.where(ref.isin(keep_cats), "other")
+        cur = cur.where(cur.isin(keep_cats), "other")
+    cats = sorted(set(ref) | set(cur))
+    r = ref.value_counts().reindex(cats, fill_value=0)
+    c = cur.value_counts().reindex(cats, fill_value=0)
     keep = (r + c) > 0
     chi2, p, _, _ = chi2_contingency(np.vstack([r[keep], c[keep]]))
     return {"test": "Pearson chi-square", "statistic": chi2, "p_value": p,
@@ -88,6 +108,8 @@ def run(cfg: dict) -> pd.DataFrame:
         rows.append({"feature": col, **numeric_drift(train[col], test[col], m["psi_bins"])})
     for col in cfg["features"]["categorical"]:
         rows.append({"feature": col, **categorical_drift(train[col], test[col])})
+    for col in cfg["features"]["target_encoded"]:       # agency and county: top 100 + other
+        rows.append({"feature": col, **categorical_drift(train[col], test[col], top=100)})
 
     # Prediction drift: validation years (just before deployment) vs test years
     p_val = art["pipeline"].predict_proba(val[cols])[:, 1]

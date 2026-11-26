@@ -10,6 +10,8 @@
   "cluster_p_value": 0.0019120190494504893,
   "cluster_flagged": true,
   "cluster_flagged_bonferroni": false,
+  "cluster_flagged_fixed50": false,
+  "in_any_fixed50_cluster": 0,
   "cluster_profile": {
     "City": "Lake",
     "Victim Sex": "Female",
@@ -20,5 +22,6 @@
   "region": "Indiana",
   "k": 40,
   "n_clusters_flagged": 5,
-  "n_clusters_flagged_bonferroni": 3
+  "n_clusters_flagged_bonferroni": 3,
+  "n_clusters_flagged_fixed50": 1
 }

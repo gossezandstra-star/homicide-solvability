@@ -13,7 +13,11 @@ Option 1 - browser: log in to Kaggle, click *Download*, unzip and place the file
 data/raw/database.csv
 ```
 
-Option 2 - Kaggle API (needs a Kaggle API token in `~/.kaggle/kaggle.json`):
+Option 2 - our mirror: download `database.csv` from the project's
+[Google Drive folder](https://drive.google.com/drive/folders/1tQ5p2fzfX3OZpEVNDJIBHh9-n-fuUDcx?usp=sharing)
+(same file, unchanged).
+
+Option 3 - Kaggle API (needs a Kaggle API token in `~/.kaggle/kaggle.json`):
 
 ```bash
 pip install kaggle

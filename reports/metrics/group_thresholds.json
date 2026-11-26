@@ -1,0 +1,10 @@
+{
+  "target_fpr": 0.2768817204301075,
+  "thresholds": {
+    "Asian/Pacific Islander": 0.3616618073403044,
+    "Black": 0.40864860653965046,
+    "Native American/Alaska Native": 0.23431866711249325,
+    "Unknown": 0.3665520532339662,
+    "White": 0.2806983539833072
+  }
+}

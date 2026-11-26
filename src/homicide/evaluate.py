@@ -6,12 +6,19 @@ threshold each of them got on validation; they were not re-tuned on test.
 
 Also produced:
 
-* a bias audit: error rates of the selected model per victim race and victim sex;
+* a bias audit: error rates of the selected model per victim race, sex, ethnicity and
+  age group, and the effect of per-group thresholds that equalise the false-positive
+  rate across victim races (chosen on validation);
+* paired bootstrap 95% intervals of every model's test average precision and of its
+  difference with the selected model;
+* a calibration table (predicted vs observed unsolved share per decile, Brier score);
 * permutation feature importance of the selected model (on the validation set);
 * examples of the most confident wrong predictions, for the error analysis.
 
 Outputs (in ``reports/metrics``): ``test_results.csv``, ``test_predictions.parquet``,
-``bias_audit.csv``, ``feature_importance.csv``, ``error_examples.csv``.
+``bootstrap_ci.csv``, ``bias_audit.csv``, ``fairness_thresholds.csv``, ``group_thresholds.json``,
+``calibration.csv``, ``calibration_summary.json``, ``feature_importance.csv``,
+``error_examples.csv``.
 
 Run::
 
@@ -28,7 +35,8 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.inspection import permutation_importance
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import (average_precision_score, brier_score_loss, confusion_matrix,
+                             f1_score, precision_score, recall_score)
 
 from homicide.config import load_config, set_seed
 from homicide.data import load_splits
@@ -36,12 +44,92 @@ from homicide.train import scores
 
 log = logging.getLogger(__name__)
 
-AUDIT_GROUPS = ["Victim Race", "Victim Sex"]
+AUDIT_GROUPS = ["Victim Race", "Victim Sex", "Victim Ethnicity", "Victim Age Group"]
+FAIRNESS_GROUP = "Victim Race"
 ERROR_COLUMNS = ["Year", "State", "City", "Agency Type", "Victim Sex", "Victim Age",
                  "Victim Race", "Weapon", "Crime Solved"]
 
 
-def bias_audit(df: pd.DataFrame, proba: np.ndarray, threshold: float, groups: list[str]) -> pd.DataFrame:
+def calibration(y: np.ndarray, proba: np.ndarray, bins: int = 10) -> pd.DataFrame:
+    """Reliability table: mean predicted vs observed unsolved share per probability decile."""
+    edges = np.unique(np.quantile(proba, np.linspace(0, 1, bins + 1)))
+    idx = np.clip(np.searchsorted(edges, proba, side="right") - 1, 0, len(edges) - 2)
+    df = pd.DataFrame({"bin": idx, "p": proba, "y": y})
+    return df.groupby("bin").agg(n=("y", "size"), mean_predicted=("p", "mean"),
+                                 observed=("y", "mean")).reset_index()
+
+
+def group_thresholds(val: pd.DataFrame, p_val: np.ndarray, base_thr: float,
+                     group: str, min_n: int = 300) -> dict:
+    """Per-group thresholds, chosen on validation, that give every group the same
+    false-positive rate as the whole validation set has at the base threshold."""
+    y = val["y"].to_numpy()
+    target_fpr = float(((p_val >= base_thr) & (y == 0)).sum() / (y == 0).sum())
+    thresholds = {}
+    for value, g_idx in val.reset_index(drop=True).groupby(group).groups.items():
+        neg = p_val[np.asarray(g_idx)][y[np.asarray(g_idx)] == 0]
+        if len(g_idx) < min_n or len(neg) == 0:
+            thresholds[value] = base_thr
+            continue
+        thresholds[value] = float(np.quantile(neg, 1 - target_fpr))   # FPR = target
+    return {"target_fpr": target_fpr, "thresholds": thresholds}
+
+
+def fairness_comparison(test: pd.DataFrame, p_test: np.ndarray, base_thr: float,
+                        group: str, per_group: dict) -> pd.DataFrame:
+    """Error rates per group with one threshold vs with per-group thresholds."""
+    t = test.reset_index(drop=True)
+    y = t["y"].to_numpy()
+    thr_vec = t[group].map(per_group).fillna(base_thr).to_numpy()
+    rows = []
+    for label, pred in (("single threshold", p_test >= base_thr),
+                        ("per-group thresholds", p_test >= thr_vec)):
+        pred = pred.astype(int)
+        rows.append({"policy": label, "group": "all", "n": len(y),
+                     "precision": precision_score(y, pred), "recall": recall_score(y, pred),
+                     "f1": f1_score(y, pred),
+                     "false_positive_rate": float(((pred == 1) & (y == 0)).sum() / (y == 0).sum())})
+        for value, g in t.groupby(group):
+            m = t.index.isin(g.index)
+            if m.sum() < 300:
+                continue
+            yy, pp = y[m], pred[m]
+            rows.append({"policy": label, "group": value, "n": int(m.sum()),
+                         "precision": precision_score(yy, pp, zero_division=0),
+                         "recall": recall_score(yy, pp, zero_division=0),
+                         "f1": f1_score(yy, pp, zero_division=0),
+                         "false_positive_rate": float(((pp == 1) & (yy == 0)).sum() / (yy == 0).sum())})
+    return pd.DataFrame(rows)
+
+
+def bootstrap_comparison(preds: pd.DataFrame, reference: str, n_boot: int = 1000,
+                         seed: int = 42) -> pd.DataFrame:
+    """95% bootstrap intervals for each model's test average precision and for its
+    difference with the reference (selected) model. Cases are resampled with
+    replacement; every model is scored on the same resample (paired bootstrap)."""
+    rng = np.random.default_rng(seed)
+    y = preds["y"].to_numpy()
+    models = [c[2:] for c in preds.columns if c.startswith("p_")]
+    probas = {m: preds[f"p_{m}"].to_numpy() for m in models}
+    draws = {m: np.empty(n_boot) for m in models}
+    for b in range(n_boot):
+        idx = rng.integers(0, len(y), len(y))
+        for m in models:
+            draws[m][b] = average_precision_score(y[idx], probas[m][idx])
+    rows = []
+    for m in models:
+        diff = draws[m] - draws[reference]
+        rows.append({"model": m, "average_precision": average_precision_score(y, probas[m]),
+                     "ap_ci_low": np.percentile(draws[m], 2.5),
+                     "ap_ci_high": np.percentile(draws[m], 97.5),
+                     f"diff_vs_{reference}": float(np.mean(diff)),
+                     "diff_ci_low": np.percentile(diff, 2.5),
+                     "diff_ci_high": np.percentile(diff, 97.5)})
+    return pd.DataFrame(rows)
+
+
+def bias_audit(df: pd.DataFrame, proba: np.ndarray, threshold: float,
+               groups: list[str]) -> pd.DataFrame:
     """Per-group error rates. Positive class = unsolved."""
     pred = (proba >= threshold).astype(int)
     rows = []
@@ -92,11 +180,30 @@ def run(cfg: dict) -> dict:
     for name, p in probas.items():
         preds[f"p_{name}"] = p
     preds.to_parquet(out / "test_predictions.parquet", index=False)
+    bootstrap_comparison(preds, best["model_name"], seed=cfg["seed"]).to_csv(
+        out / "bootstrap_ci.csv", index=False)
 
     # Bias audit of the selected model
     p_best, thr = probas[best["model_name"]], best["threshold"]
     audit = bias_audit(test.reset_index(drop=True), p_best, thr, AUDIT_GROUPS)
     audit.to_csv(out / "bias_audit.csv", index=False)
+
+    # Calibration of the selected model
+    calib = calibration(y_test, p_best)
+    calib.to_csv(out / "calibration.csv", index=False)
+    with open(out / "calibration_summary.json", "w", encoding="utf-8") as f:
+        json.dump({"brier_score": brier_score_loss(y_test, p_best),
+                   "brier_score_baseline": brier_score_loss(y_test, np.full(len(y_test),
+                                                                            y_test.mean()))},
+                  f, indent=2)
+
+    # Fairer thresholds: equal false-positive rate per victim race, chosen on validation
+    p_val = best["pipeline"].predict_proba(val[cols])[:, 1]
+    gt = group_thresholds(val, p_val, thr, FAIRNESS_GROUP)
+    fairness_comparison(test, p_best, thr, FAIRNESS_GROUP, gt["thresholds"]).to_csv(
+        out / "fairness_thresholds.csv", index=False)
+    with open(out / "group_thresholds.json", "w", encoding="utf-8") as f:
+        json.dump(gt, f, indent=2)
 
     # Most confident mistakes
     t = test.reset_index(drop=True).assign(p_unsolved=p_best)
@@ -116,7 +223,7 @@ def run(cfg: dict) -> dict:
         out / "feature_importance.csv", index=False)
 
     selected = results[results["selected"]].iloc[0].to_dict()
-    log.info("selected model on test: %s", {k: v for k, v in selected.items()})
+    log.info("selected model on test: %s", selected)
     return selected
 
 

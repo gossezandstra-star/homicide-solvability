@@ -84,3 +84,21 @@ def test_cluster_summary_flags_high_unsolved_cluster():
     table = summarise(df, labels, ["City"], min_size=15, alpha=0.01)
     assert table.loc[table["cluster"] == 0, "flagged"].item()
     assert not table.loc[table["cluster"] == 1, "flagged"].item()
+
+
+def test_predict_handles_missing_columns(raw, cfg, tmp_path):
+    """A CSV with only a few columns (no victim age, no agency) can still be scored."""
+    import joblib  # pylint: disable=import-outside-toplevel
+    from sklearn.tree import DecisionTreeClassifier  # pylint: disable=import-outside-toplevel
+    from homicide.predict import SolvabilityModel  # pylint: disable=import-outside-toplevel
+    from homicide.train import make_pipeline  # pylint: disable=import-outside-toplevel
+
+    df = clean(raw, cfg["features"]["leakage"])
+    pipe = make_pipeline(cfg, DecisionTreeClassifier(max_depth=3, random_state=0))
+    pipe.fit(df[input_columns(cfg)], df["y"])
+    path = tmp_path / "m.joblib"
+    joblib.dump({"model_name": "t", "pipeline": pipe, "threshold": 0.5,
+                 "input_columns": input_columns(cfg)}, path)
+    out = SolvabilityModel(path).predict(pd.DataFrame({"Year": [2014], "State": ["Texas"],
+                                                       "Weapon": ["Handgun"]}))
+    assert 0 <= out["p_unsolved"].iloc[0] <= 1

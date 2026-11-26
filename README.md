@@ -32,16 +32,24 @@ validation years 2009-2011 and evaluated once on test. Positive class = *unsolve
 | **Random forest (selected)** | **0.569** | **0.753** | **0.569** | **0.661** | **0.500** |
 
 * The random forest finds two thirds of the cases that stay unsolved; half of the cases it
-  flags really do go cold, against 30% by chance. Gradient boosting is equally good on
-  test (difference 0.003); the random forest was chosen because it was best on validation.
+  flags really do go cold, against 30% by chance. Gradient boosting is about equally good
+  on test (difference 0.003, paired bootstrap 95% interval -0.000 to +0.007,
+  `bootstrap_ci.csv`); the random forest was chosen because it was best on validation.
 * Most important inputs: the investigating agency, the weapon and the county.
 * Bias audit: cases with Black victims are flagged more often (52% vs 27% for White
   victims). This mirrors real differences in clearance rates (39.5% vs 20.7% unsolved),
-  but the false-positive rate is also higher (0.39 vs 0.20). The model should support,
-  not replace, a human decision.
-* Drift: `State` and `Weapon` shift moderately between training and test years
-  (PSI 0.17); the predictions themselves are stable (PSI 0.004) and performance per test
-  year is stable (average precision 0.578, 0.564, 0.565).
+  but the false-positive rate is also higher (0.39 vs 0.20). Per-group thresholds chosen
+  on validation bring both false-positive rates to about 0.28 at a cost of 0.02 F1
+  (`fairness_thresholds.csv`). The model should support, not replace, a human decision.
+* Calibration: Brier score 0.175 against 0.211 for always predicting the base rate
+  (`calibration_summary.json`, figure 12).
+* Leakage check: whether `Perpetrator Sex` is "Unknown" matches whether the case is
+  unsolved in 99.97% of all cases, so this column alone would "predict" the label; all
+  perpetrator columns are therefore dropped (`leakage_check.csv`).
+* Drift: the agency (PSI 0.19), `State` and `Weapon` (0.17) and the county (0.13) shift
+  moderately between training and test years; the predictions themselves are stable
+  (PSI 0.004) and performance per test year is stable (average precision 0.578, 0.564,
+  0.565).
 
 **Cluster detector (Indiana, k = 40):** 5 of 40 clusters are flagged (3 after Bonferroni
 correction), all in Lake County. 12 of the 16 unsolved strangulations/suffocations of women
@@ -72,19 +80,22 @@ config.yaml              every setting: paths, split years, feature lists, grids
 src/homicide/
   data.py                load, clean (drop leakage columns), split by year
   features.py            preprocessing: one-hot, imputation, scaling, target encoding
-  train.py               baseline + 4 models, tuning on validation, model selection
-  evaluate.py            test metrics, bias audit, feature importance, error examples
+  train.py               baseline + 5 models, tuning on validation, model selection
+  evaluate.py            test metrics, bias audit, fairer thresholds, calibration,
+                         feature importance, error examples
+  learning_curve.py      validation score against training-set size
   monitor.py             drift monitoring (KS, chi-square, PSI) and performance per year
   cluster.py             k-modes cluster detector + Gary, Indiana check
   figures.py             recreates every figure in reports/figures
   predict.py             batch demo: CSV in, predictions out
-app/main.py              FastAPI service (/health, /predict)
+app/main.py              FastAPI service (/health, /predict, /metrics)
 notebooks/               walkthrough notebook that calls the modules above
 tests/                   unit tests (synthetic data, no download needed)
 reports/figures          all figures used in the report
 reports/metrics          all numbers used in the report (CSV/JSON)
 docs/pipeline.png        pipeline diagram (source: docs/pipeline.mmd)
 docs/references.md       all references (APA 7)
+pyproject.toml           package definition (`pip install -e .`)
 Dockerfile               container for the API
 k8s/                     Kubernetes deployment and service
 .github/workflows/ci.yml CI pipeline: lint, test, build
@@ -92,42 +103,49 @@ k8s/                     Kubernetes deployment and service
 
 ## Installation
 
-Python 3.11 or newer (tested with Python 3.13 on Linux, 2 CPU cores, 8 GB RAM).
+Python 3.12 or newer (tested with Python 3.13 on Linux, 2 CPU cores, 8 GB RAM).
 
 ```bash
-git clone <this repository>
+git clone https://github.com/gossezandstra-star/homicide-solvability.git
 cd homicide-solvability
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+pip install -e .                                    # makes `import homicide` work everywhere
 ```
 
-Download the dataset as described in [`data/README.md`](data/README.md) and put it at
-`data/raw/database.csv`.
+Download the dataset as described in [`data/README.md`](data/README.md) (Kaggle, or the
+copy in our [Google Drive folder](https://drive.google.com/drive/folders/1tQ5p2fzfX3OZpEVNDJIBHh9-n-fuUDcx?usp=sharing))
+and put it at `data/raw/database.csv`.
 
 ## Reproduce everything
 
 All randomness is fixed with `seed: 42` in `config.yaml`. Run from the project root:
 
 ```bash
-make all          # = the six commands below
+make all          # = the seven commands below
 ```
 
-or step by step (Windows without `make`: set `PYTHONPATH=src` first):
+or step by step (if you skipped `pip install -e .`, first run `export PYTHONPATH=src`,
+or `$env:PYTHONPATH="src"` in Windows PowerShell):
 
 | Step | Command | Output | Time* |
 |---|---|---|---|
 | 1. Clean + split | `python -m homicide.data` | `data/processed/{train,val,test}.parquet` | ~10 s |
 | 2. Train + tune | `python -m homicide.train` | `models/*.joblib`, `reports/metrics/tuning_results.csv`, `validation_summary.json` | ~20 min |
-| 3. Test evaluation | `python -m homicide.evaluate` | `test_results.csv`, `bias_audit.csv`, `feature_importance.csv`, `error_examples.csv` | ~3 min |
-| 4. Drift monitoring | `python -m homicide.monitor` | `drift_report.csv`, `performance_by_year.csv` | ~30 s |
-| 5. Cluster detector | `python -m homicide.cluster` | `elbow.csv`, `clusters.csv`, `gary_check.json` | ~3 min |
-| 6. Figures | `python -m homicide.figures` | `reports/figures/fig01...fig11` | ~15 s |
+| 3. Test evaluation | `python -m homicide.evaluate` | `test_results.csv`, `bootstrap_ci.csv`, `bias_audit.csv`, `fairness_thresholds.csv`, `calibration.csv`, `feature_importance.csv`, `error_examples.csv` | ~4 min |
+| 4. Learning curve | `python -m homicide.learning_curve` | `learning_curve.csv` | ~10 min |
+| 5. Drift monitoring | `python -m homicide.monitor` | `drift_report.csv`, `performance_by_year.csv` | ~30 s |
+| 6. Cluster detector | `python -m homicide.cluster` | `elbow.csv`, `clusters.csv`, `gary_check.json` | ~10 min |
+| 7. Figures | `python -m homicide.figures` | `reports/figures/fig01...fig13` | ~15 s |
 
-\*on 2 CPU cores. Every figure in the report is produced by step 6 from the files of
-steps 1-5; the table in `src/homicide/figures.py` lists which file each figure comes from.
+\*on 2 CPU cores. Every figure is produced by step 7 from the files of steps 1-6; the
+table in `src/homicide/figures.py` lists which file each figure comes from, and the
+appendix of the report maps every report figure to its file.
 
 The trained models are not stored in git (too large). Re-run step 2, or download them
 from [Google Drive](https://drive.google.com/drive/folders/1tQ5p2fzfX3OZpEVNDJIBHh9-n-fuUDcx?usp=sharing) and put `best_model.joblib` in `models/`.
+
+The final report is in [`reports/report.pdf`](reports/report.pdf).
 
 ## Demo
 
@@ -140,11 +158,13 @@ python -m homicide.predict examples/sample_input.csv predictions.csv
 **REST API:**
 
 ```bash
+export API_KEY=change-me                  # optional; without it no key is needed (local demo)
 uvicorn app.main:app --port 8000          # then open http://localhost:8000/docs
 ```
 
 ```bash
 curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" \
+  -H "X-API-Key: change-me" \
   -d '[{"Year": 2014, "State": "Indiana", "City": "Lake", "Victim Sex": "Female",
         "Victim Age": 31, "Victim Race": "Black", "Weapon": "Strangulation"}]'
 ```
@@ -152,9 +172,14 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" \
 **Docker** (after step 2, because the image contains `models/best_model.joblib`):
 
 ```bash
-docker build -t homicide-solvability .
-docker run --rm -p 8000:8000 homicide-solvability
+docker build -t homicide-solvability:1.0 .
+docker run --rm -p 8000:8000 -e API_KEY=change-me homicide-solvability:1.0
 ```
+
+Security: `/predict` and `/metrics` need the `X-API-Key` header when `API_KEY` is set
+(`/health` stays open for the probes); one request may hold at most `MAX_CASES` cases
+(default 1000) and inputs are range-checked; the service writes no case data to disk;
+the container runs as a non-root user.
 
 **Kubernetes** (after building the image):
 

@@ -1,5 +1,5 @@
 # Kubernetes deployment of the API (lecture 15).
-#   docker build -t homicide-solvability:1.0 .
+#   docker build -t homicide-solvability:1.0 .   (the tag must match `image` below)
 #   kubectl apply -f k8s/
 #   kubectl get pods
 #   kubectl port-forward service/homicide-solvability 8000:80
@@ -25,9 +25,12 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
           resources:
-            requests: {cpu: "250m", memory: "512Mi"}
-            limits: {cpu: "1", memory: "1Gi"}
+            requests: {cpu: "250m", memory: "1Gi"}     # the random forest needs ~0.9 GB
+            limits: {cpu: "1", memory: "2Gi"}
           readinessProbe:          # only send traffic once the model is loaded
             httpGet: {path: /health, port: 8000}
             initialDelaySeconds: 10

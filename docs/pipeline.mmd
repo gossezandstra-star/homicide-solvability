@@ -1,12 +1,17 @@
 flowchart LR
     A[(Kaggle<br/>database.csv<br/>638k homicides)] --> B[data.py<br/>clean + drop leakage<br/>split by year]
-    B --> C[features.py<br/>one-hot · impute · scale<br/>target-encode agency/city]
-    C --> D[train.py<br/>baseline + LR · DT · RF · GB<br/>tune on 2009-2011]
-    D --> E[evaluate.py<br/>test 2012-2014<br/>bias audit · errors]
+    B --> C[features.py<br/>one-hot · impute · scale<br/>target-encode agency/county]
+    C --> D[train.py<br/>baseline + LR · DT · RF<br/>AdaBoost · GB<br/>tune on 2009-2011]
+    D --> E[evaluate.py<br/>test 2012-2014<br/>bias audit · calibration · errors]
+    D --> L[learning_curve.py]
     D --> M[(best_model.joblib)]
+    M --> W[monitor.py<br/>drift: KS · chi² · PSI]
     M --> P[predict.py<br/>batch CSV demo]
-    M --> Q[FastAPI in Docker<br/>/predict]
+    M --> Q[FastAPI · Docker · Kubernetes<br/>/predict · /metrics]
     B --> K[cluster.py<br/>k-modes per region<br/>flag unsolved clusters]
     K --> G[Gary, Indiana check]
     E --> F[figures.py<br/>all report figures]
+    L --> F
+    W --> F
     K --> F
+    CI[GitHub Actions CI<br/>pylint · pytest · docker build] -.-> Q

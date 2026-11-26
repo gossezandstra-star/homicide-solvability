@@ -29,7 +29,10 @@ from homicide.data import clean
 log = logging.getLogger(__name__)
 
 
-class SolvabilityModel:
+NUMERIC_INPUTS = ("Victim Age", "Victim Count", "Year")
+
+
+class SolvabilityModel:  # pylint: disable=too-few-public-methods
     """Small wrapper around the saved artifact so the CLI and the API share one code path."""
 
     def __init__(self, path: str | Path):
@@ -40,10 +43,16 @@ class SolvabilityModel:
         self.name = art["model_name"]
 
     def predict(self, df: pd.DataFrame) -> pd.DataFrame:
-        X = clean(df)
-        for col in self.columns:                 # unknown optional fields -> missing
+        """Add p_unsolved, p_solved and likely_to_go_cold to a frame of new cases.
+
+        Missing optional columns are filled in as unknown before cleaning, so a CSV with
+        only a few columns (for example no victim age) can still be scored.
+        """
+        X = df.copy()
+        for col in self.columns:
             if col not in X.columns:
-                X[col] = np.nan if col in ("Victim Age", "Victim Count", "Year") else "Unknown"
+                X[col] = np.nan if col in NUMERIC_INPUTS else "Unknown"
+        X = clean(X)
         p = self.pipeline.predict_proba(X[self.columns])[:, 1]
         out = df.copy()
         out["p_unsolved"] = p.round(4)

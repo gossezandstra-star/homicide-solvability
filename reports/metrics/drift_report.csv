@@ -1,6 +1,8 @@
 feature,test,statistic,p_value,psi,status
+Agency Code,Pearson chi-square,4266.9719350630985,0.0,0.1884613525362875,moderate shift
 State,Pearson chi-square,3545.105220923193,0.0,0.1694453221802147,moderate shift
 Weapon,Pearson chi-square,8878.795875401152,0.0,0.16875498918872073,moderate shift
+City,Pearson chi-square,3838.6946280790494,0.0,0.13087103777394785,moderate shift
 Record Source,Pearson chi-square,3604.3973043238093,0.0,0.05785634145377283,stable
 Victim Age,Kolmogorov-Smirnov,0.0405027447412345,5.42205907190593e-58,0.0140304882867555,stable
 Victim Race,Pearson chi-square,193.14275158756016,1.119197707002174e-40,0.004761843615331077,stable

@@ -11,29 +11,50 @@ Endpoints
 GET  /health    -- liveness check for uptime monitoring and the Kubernetes probes
 GET  /metrics   -- the four golden signals (latency, traffic, errors, saturation) plus
                    the share of flagged cases, to spot prediction drift (lecture 17)
-POST /predict   -- one or more cases in, probabilities and flags out
+POST /predict   -- one or more cases in (at most MAX_CASES), probabilities and flags out
+
+Security: set the environment variable ``API_KEY`` to require the header
+``X-API-Key: <key>`` on /predict and /metrics. The service stores no case data on disk;
+it keeps only the last 5,000 predicted probabilities in memory for monitoring.
 """
 
 from __future__ import annotations
 
 import os
-import resource
+import secrets
+import sys
 import time
 from collections import deque
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Security
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, ConfigDict, Field
+
+try:                      # Unix only; on Windows the saturation metrics are reported as None
+    import resource
+except ImportError:       # pragma: no cover
+    resource = None
 
 from homicide.predict import SolvabilityModel
 
 MODEL_PATH = Path(os.environ.get("MODEL_PATH", Path(__file__).resolve().parents[1]
                                  / "models" / "best_model.joblib"))
 
+API_KEY = os.environ.get("API_KEY")                  # unset = no key needed (local demo)
+MAX_CASES = int(os.environ.get("MAX_CASES", "1000"))  # per request, protects the service
+
 app = FastAPI(title="Homicide solvability API", version="1.0.0")
 model = SolvabilityModel(MODEL_PATH)
+key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def check_key(key: str | None = Security(key_header)) -> None:
+    """Reject the request when an API key is configured and the header does not match."""
+    if API_KEY and not (key and secrets.compare_digest(key, API_KEY)):
+        raise HTTPException(status_code=401, detail="missing or invalid API key")
 
 STARTED = time.time()
 STATS = {"requests": 0, "errors": 0, "cases_scored": 0, "cases_flagged": 0}
@@ -45,7 +66,7 @@ class Case(BaseModel):
     """Information that is known when a homicide case is opened."""
     model_config = ConfigDict(populate_by_name=True)
 
-    year: int = Field(alias="Year", examples=[2014])
+    year: int = Field(alias="Year", ge=1900, le=2100, examples=[2014])
     month: str = Field("Unknown", alias="Month", examples=["July"])
     state: str = Field(alias="State", examples=["Indiana"])
     city: str = Field("Unknown", alias="City", examples=["Lake"])
@@ -53,15 +74,17 @@ class Case(BaseModel):
     agency_type: str = Field("Unknown", alias="Agency Type", examples=["Municipal Police"])
     crime_type: str = Field("Murder or Manslaughter", alias="Crime Type")
     victim_sex: str = Field("Unknown", alias="Victim Sex", examples=["Female"])
-    victim_age: float | None = Field(None, alias="Victim Age", examples=[31])
+    victim_age: float | None = Field(None, alias="Victim Age", ge=0, le=120, examples=[31])
     victim_race: str = Field("Unknown", alias="Victim Race", examples=["Black"])
     victim_ethnicity: str = Field("Unknown", alias="Victim Ethnicity")
     weapon: str = Field("Unknown", alias="Weapon", examples=["Strangulation"])
-    victim_count: int = Field(0, alias="Victim Count", description="additional victims")
+    victim_count: int = Field(0, alias="Victim Count", ge=0, le=100,
+                              description="additional victims")
     record_source: str = Field("FBI", alias="Record Source")
 
 
 class Prediction(BaseModel):
+    """Model output for one case."""
     p_unsolved: float
     p_solved: float
     likely_to_go_cold: bool
@@ -90,12 +113,21 @@ def health() -> dict:
     return {"status": "ok", "model": model.name, "threshold": model.threshold}
 
 
-@app.get("/metrics")
+def _saturation() -> dict:
+    """Peak memory and CPU time of this process (Unix); None where not available."""
+    if resource is None:
+        return {"max_memory_mb": None, "cpu_seconds": None}
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    scale = 1024 * 1024 if sys.platform == "darwin" else 1024   # bytes on macOS, KiB on Linux
+    return {"max_memory_mb": usage.ru_maxrss / scale,
+            "cpu_seconds": usage.ru_utime + usage.ru_stime}
+
+
+@app.get("/metrics", dependencies=[Depends(check_key)])
 def metrics() -> dict:
     """Four golden signals plus prediction statistics."""
     uptime = time.time() - STARTED
     lat = np.array(LATENCIES_MS) if LATENCIES_MS else np.array([0.0])
-    usage = resource.getrusage(resource.RUSAGE_SELF)
     return {
         "latency_ms": {"p50": float(np.percentile(lat, 50)), "p95": float(np.percentile(lat, 95)),
                        "max": float(lat.max())},
@@ -103,17 +135,18 @@ def metrics() -> dict:
                     "requests_per_minute": STATS["requests"] / max(uptime / 60, 1e-9)},
         "errors": {"count": STATS["errors"],
                    "rate": STATS["errors"] / max(STATS["requests"], 1)},
-        "saturation": {"max_memory_mb": usage.ru_maxrss / 1024,
-                       "cpu_seconds": usage.ru_utime + usage.ru_stime},
+        "saturation": _saturation(),
         "predictions": {"mean_p_unsolved": float(np.mean(P_UNSOLVED)) if P_UNSOLVED else None,
                         "flag_rate": STATS["cases_flagged"] / max(STATS["cases_scored"], 1)},
         "uptime_seconds": uptime,
     }
 
 
-@app.post("/predict", response_model=list[Prediction])
+@app.post("/predict", response_model=list[Prediction], dependencies=[Depends(check_key)])
 def predict(cases: list[Case]) -> list[Prediction]:
     """Score one or more cases."""
+    if not cases or len(cases) > MAX_CASES:
+        raise HTTPException(status_code=422, detail=f"send between 1 and {MAX_CASES} cases")
     df = pd.DataFrame([c.model_dump(by_alias=True) for c in cases])
     df["Victim Age"] = df["Victim Age"].fillna(998)       # 998 = unknown in the SHR coding
     result = model.predict(df)
