@@ -1,0 +1,19 @@
+# data is downloaded separately (see data/README.md)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# trained models are too large for git; download link in README
+models/*.joblib
+
+# big intermediate outputs
+reports/metrics/test_predictions.parquet
+reports/metrics/cluster_assignments.csv
+
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.pytest_cache/
+.venv/
+examples/sample_output.csv

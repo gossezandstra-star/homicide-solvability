@@ -1,0 +1,21 @@
+error,p_unsolved,Year,State,City,Agency Type,Victim Sex,Victim Age,Victim Race,Weapon,Crime Solved
+missed unsolved case,0.02515407792115619,2012,Virginia,Newport News,Municipal Police,Male,0.0,Black,Blunt Object,No
+missed unsolved case,0.025886698245156575,2013,Michigan,Bay,Sheriff,Female,48.0,White,Handgun,No
+missed unsolved case,0.02897956112157718,2013,Utah,Utah,Municipal Police,Male,2.0,White,Blunt Object,No
+missed unsolved case,0.029496795187954075,2013,North Carolina,McDowell,Sheriff,Male,16.0,White,Handgun,No
+missed unsolved case,0.02984979327489258,2013,North Carolina,McDowell,Sheriff,Male,18.0,White,Handgun,No
+missed unsolved case,0.030147551488614775,2012,North Carolina,Catawba,Sheriff,Female,44.0,White,Shotgun,No
+missed unsolved case,0.0301523644161085,2013,Arkansas,Washington,Municipal Police,Male,0.0,White,Blunt Object,No
+missed unsolved case,0.03167242796298111,2013,Arkansas,Cross,Municipal Police,Female,29.0,White,Handgun,No
+missed unsolved case,0.03288847220086029,2014,Pennsylvania,Westmoreland,Municipal Police,Female,37.0,White,Handgun,No
+missed unsolved case,0.03320354386200472,2013,Minnesota,Stearns,Sheriff,Female,1.0,White,Blunt Object,No
+false alarm,0.9150634213949758,2012,Missouri,St. Louis city,Municipal Police,Male,52.0,Black,Firearm,Yes
+false alarm,0.9104775852611833,2013,Missouri,St. Louis city,Municipal Police,Male,46.0,Black,Firearm,Yes
+false alarm,0.9066054382858417,2013,Missouri,St. Louis city,Municipal Police,Male,26.0,Black,Firearm,Yes
+false alarm,0.9039588332663061,2014,Texas,Dallas,Municipal Police,Male,52.0,Black,Firearm,Yes
+false alarm,0.8936018402509286,2013,Missouri,St. Louis city,Municipal Police,Male,25.0,Black,Firearm,Yes
+false alarm,0.8926549241230747,2013,Texas,Dallas,Municipal Police,Male,25.0,Black,Firearm,Yes
+false alarm,0.8921612918278023,2013,Missouri,St. Louis city,Municipal Police,Male,23.0,Black,Firearm,Yes
+false alarm,0.8880364159260448,2013,Missouri,St. Louis city,Municipal Police,Male,27.0,Black,Firearm,Yes
+false alarm,0.8859659538766498,2012,Missouri,St. Louis city,Municipal Police,Male,33.0,Black,Firearm,Yes
+false alarm,0.8855308220031434,2014,Texas,Dallas,Municipal Police,Male,26.0,White,Firearm,Yes

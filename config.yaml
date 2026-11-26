@@ -1,0 +1,102 @@
+# Central configuration for the homicide solvability project.
+# Every script reads this file, so changing a value here changes the whole pipeline.
+
+seed: 42
+
+paths:
+  raw_csv: data/raw/database.csv
+  processed_dir: data/processed
+  models_dir: models
+  figures_dir: reports/figures
+  metrics_dir: reports/metrics
+
+# Time-based split: we train on the past and evaluate on later years,
+# which mimics how the model would be used on new cases.
+split:
+  train_end_year: 2008      # 1980-2008 -> train
+  val_end_year: 2011        # 2009-2011 -> validation
+                            # 2012-2014 -> test (touched once, at the very end)
+
+features:
+  categorical:
+    - State
+    - Agency Type
+    - Crime Type
+    - Month
+    - Victim Sex
+    - Victim Race
+    - Victim Ethnicity
+    - Weapon
+    - Record Source
+  numeric:
+    - Year
+    - Victim Age
+    - Victim Count
+  # High-cardinality columns that are target-encoded (cross-fitted, so no leakage).
+  target_encoded:
+    - Agency Code
+    - City
+  # Columns that are only known once a case is solved. Using them would leak the label.
+  leakage:
+    - Perpetrator Sex
+    - Perpetrator Age
+    - Perpetrator Race
+    - Perpetrator Ethnicity
+    - Perpetrator Count
+    - Relationship
+
+# Hyper-parameter grids, tuned on the validation set.
+models:
+  logistic_regression:
+    C: [0.01, 0.1, 1.0, 10.0]
+  decision_tree:
+    criterion: [gini, entropy]          # the two split criteria from lecture 9
+    max_depth: [6, 10, 14, 20]
+    min_samples_leaf: [20, 100, 500]
+  random_forest:
+    n_estimators: [200]
+    max_depth: [12, 20, null]
+    min_samples_leaf: [5, 20]
+    max_features: [sqrt, 0.3]
+  adaboost:                              # boosting with shallow trees (lecture 9)
+    base_max_depth: [1, 3]
+    n_estimators: [200]
+    learning_rate: [0.5, 1.0]
+  hist_gradient_boosting:
+    learning_rate: [0.05, 0.1]
+    max_leaf_nodes: [31, 63]
+    max_iter: [300]
+
+# To keep tuning fast, every grid point is fitted on a stratified sample of the training
+# set. The best setting of each model is then refitted on the full training set.
+tuning:
+  sample_size: 150000
+
+# Metric used to pick the best hyper-parameters and the best model.
+# The positive class is "unsolved" (the case is at risk of going cold).
+selection_metric: average_precision
+
+clustering:
+  region_column: State
+  region: Indiana
+  features:
+    - City
+    - Victim Sex
+    - Victim Age Group
+    - Victim Race
+    - Weapon
+  k_range: [10, 20, 30, 40, 50, 60, 70, 80]
+  silhouette_sample: 3000      # silhouette (Hamming distance) on a sample, as a second check
+  n_init: 3
+  # A cluster is flagged as a possible serial-offender pattern when it is large enough
+  # and its share of unsolved cases is significantly above the regional average
+  # (one-sided binomial test). We also report the stricter Bonferroni-corrected flag.
+  min_cluster_size: 15
+  alpha: 0.01
+
+# Drift monitoring (lecture 17): compare the training years (reference) with the test
+# years (stand-in for production data).
+monitoring:
+  psi_bins: 10
+  psi_warning: 0.1     # 0.1-0.25: moderate shift
+  psi_alert: 0.25      # > 0.25: significant shift

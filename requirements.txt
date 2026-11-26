@@ -1,0 +1,16 @@
+# Python 3.11+ (tested with 3.13)
+numpy==2.5.3
+pandas==3.0.5
+pyarrow==26.0.1
+scikit-learn==1.9.1
+scipy==1.18.1
+kmodes==0.12.2
+matplotlib==3.11.2
+pyyaml==6.0.3
+joblib==1.6.0
+# serving
+fastapi==0.165.0
+uvicorn==0.54.0
+pydantic==2.13.5
+# tests
+pytest==9.1.1

@@ -1,0 +1,24 @@
+{
+  "applicable": true,
+  "unsolved_lake_female_strangulations": 16,
+  "in_any_flagged_cluster": 12,
+  "cluster_with_most_of_them": 0,
+  "of_them_in_that_cluster": 8,
+  "cluster_size": 303,
+  "cluster_unsolved_share": 0.40264026402640263,
+  "regional_unsolved_share": 0.32207973479891827,
+  "cluster_p_value": 0.0019120190494504893,
+  "cluster_flagged": true,
+  "cluster_flagged_bonferroni": false,
+  "cluster_profile": {
+    "City": "Lake",
+    "Victim Sex": "Female",
+    "Victim Age Group": "25-34",
+    "Victim Race": "Black",
+    "Weapon": "Blunt Object"
+  },
+  "region": "Indiana",
+  "k": 40,
+  "n_clusters_flagged": 5,
+  "n_clusters_flagged_bonferroni": 3
+}

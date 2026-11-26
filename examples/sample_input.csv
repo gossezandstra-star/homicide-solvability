@@ -1,0 +1,9 @@
+Agency Code,Agency Type,City,State,Year,Month,Crime Type,Victim Sex,Victim Age,Victim Race,Victim Ethnicity,Weapon,Victim Count,Record Source
+NY04601,Municipal Police,Schenectady,New York,2014,December,Murder or Manslaughter,Female,30,Black,Not Hispanic,Firearm,0,FBI
+DE00206,Municipal Police,New Castle,Delaware,2014,August,Murder or Manslaughter,Male,34,Black,Unknown,Firearm,0,FBI
+CA05606,Municipal Police,Ventura,California,2014,March,Murder or Manslaughter,Female,39,White,Hispanic,Handgun,0,FBI
+AZ00713,Municipal Police,Maricopa,Arizona,2014,November,Murder or Manslaughter,Male,41,White,Not Hispanic,Handgun,0,FBI
+NC09200,Sheriff,Wake,North Carolina,2014,April,Murder or Manslaughter,Female,57,Black,Unknown,Handgun,2,FBI
+NC00401,Municipal Police,Anson,North Carolina,2014,March,Murder or Manslaughter,Female,45,Black,Unknown,Handgun,1,FBI
+ILCPD00,Municipal Police,Cook,Illinois,2014,October,Murder or Manslaughter,Male,34,Black,Unknown,Handgun,0,FBI
+FL00500,Sheriff,Brevard,Florida,2014,December,Murder or Manslaughter,Male,26,Black,Unknown,Firearm,0,FOIA

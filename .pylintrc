@@ -1,0 +1,10 @@
+[MAIN]
+init-hook="import sys; sys.path.insert(0, 'src')"
+
+[FORMAT]
+max-line-length=110
+
+[MESSAGES CONTROL]
+# invalid-name: X / y are the usual ML names; wrong-import-position: matplotlib.use("Agg")
+# must come before pyplot; duplicate-code: the small CLI boilerplate in every step.
+disable=invalid-name,wrong-import-position,duplicate-code,too-many-locals

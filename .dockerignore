@@ -1,0 +1,9 @@
+data/
+reports/
+notebooks/
+tests/
+docs/
+.git/
+**/__pycache__
+models/*
+!models/best_model.joblib

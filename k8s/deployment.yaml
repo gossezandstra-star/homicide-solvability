@@ -1,0 +1,38 @@
+# Kubernetes deployment of the API (lecture 15).
+#   docker build -t homicide-solvability:1.0 .
+#   kubectl apply -f k8s/
+#   kubectl get pods
+#   kubectl port-forward service/homicide-solvability 8000:80
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homicide-solvability
+  labels:
+    app: homicide-solvability
+spec:
+  replicas: 2                      # two pods for availability; the Service balances load
+  selector:
+    matchLabels:
+      app: homicide-solvability
+  template:
+    metadata:
+      labels:
+        app: homicide-solvability
+    spec:
+      containers:
+        - name: api
+          image: homicide-solvability:1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          resources:
+            requests: {cpu: "250m", memory: "512Mi"}
+            limits: {cpu: "1", memory: "1Gi"}
+          readinessProbe:          # only send traffic once the model is loaded
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:           # restart the pod if it stops answering
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 30
+            periodSeconds: 30

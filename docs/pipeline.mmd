@@ -1,0 +1,12 @@
+flowchart LR
+    A[(Kaggle<br/>database.csv<br/>638k homicides)] --> B[data.py<br/>clean + drop leakage<br/>split by year]
+    B --> C[features.py<br/>one-hot · impute · scale<br/>target-encode agency/city]
+    C --> D[train.py<br/>baseline + LR · DT · RF · GB<br/>tune on 2009-2011]
+    D --> E[evaluate.py<br/>test 2012-2014<br/>bias audit · errors]
+    D --> M[(best_model.joblib)]
+    M --> P[predict.py<br/>batch CSV demo]
+    M --> Q[FastAPI in Docker<br/>/predict]
+    B --> K[cluster.py<br/>k-modes per region<br/>flag unsolved clusters]
+    K --> G[Gary, Indiana check]
+    E --> F[figures.py<br/>all report figures]
+    K --> F

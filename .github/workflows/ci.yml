@@ -1,0 +1,35 @@
+# CI pipeline (lecture 18): lint -> unit tests -> build the Docker image.
+# Runs on every push and pull request. The tests use synthetic data, so the
+# Kaggle dataset is not needed here.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt pylint
+      - name: Lint (pylint)
+        run: pylint src app --fail-under=8
+      - name: Unit tests (pytest)
+        run: pytest -q
+
+  docker-build:
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Placeholder model for the build test
+        # The real model is not in git; the build stage only checks that the image builds.
+        run: mkdir -p models && touch models/best_model.joblib
+      - name: Build image
+        run: docker build -t homicide-solvability:ci .
