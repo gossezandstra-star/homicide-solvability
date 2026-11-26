@@ -14,3 +14,4 @@ uvicorn==0.54.0
 pydantic==2.13.5
 # tests
 pytest==9.1.1
+httpx2==2.13.1          # needed by the FastAPI test client (tests/test_api.py)
